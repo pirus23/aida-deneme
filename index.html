@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>AİDA - Site Yönetimi</title>
 <style>
 :root{--bg:#f5f7fa;--card:#fff;--ink:#1c2b3a;--muted:#667789;--line:#e4eaf0;--blue:#2459d3;--blue-soft:#eaf0fd;--teal:#0e8f83;--red:#b8404d;--red-soft:#fceeee;--amber:#8a6208;--amber-soft:#fff4d9;--green:#137a58;--green-soft:#e2f4ec}
 *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-tap-highlight-color:transparent}
@@ -175,6 +174,7 @@ details[open] summary:after{content:'−'}
 </head>
 <body>
 <div id="toast"></div>
+<div id="loading" class="view active"><div class="narrow"><div class="card"><div class="logo">AİDA</div><p class="muted">Yükleniyor…</p></div></div></div>
 <div id="modal" class="modal"><div class="card" id="modalBox"></div></div>
 
 <!-- TANITIM SAYFASI -->
@@ -299,7 +299,7 @@ details[open] summary:after{content:'−'}
     <button id="tabReg" class="secondary" onclick="A.authTab('register')">Yönetici başvurusu</button>
    </div>
    <div id="formLogin">
-    <label>E-posta</label><input id="lEmail" type="email" placeholder="ornek@mail.com" autocomplete="username">
+    <label>E-posta veya kullanıcı adı</label><input id="lEmail" type="text" inputmode="email" autocapitalize="none" autocorrect="off" placeholder="ornek@mail.com veya admin" autocomplete="username">
     <label>Şifre</label><input id="lPass" type="password" placeholder="Şifre" autocomplete="current-password">
     <button class="ghost small" style="margin-top:6px" onclick="A.togglePw('lPass')">Şifreyi göster / gizle</button>
     <button class="full" onclick="A.login()">Giriş yap</button>
@@ -321,24 +321,6 @@ details[open] summary:after{content:'−'}
  </div>
 </div>
 
-<!-- İLK KURULUM -->
-<div id="setup" class="view">
- <div class="narrow">
-  <div class="card">
-   <div class="logo">AİDA</div>
-   <h3 style="margin-top:14px">İlk kurulum: Süper Admin hesabı</h3>
-   <p class="muted">Bu hesap yönetici başvurularını, site hesaplarını ve abonelikleri yönetir. Şifrenizi güvenli bir yere not edin; unutulursa sıfırlayacak başka bir süper admin yoktur.</p>
-   <label>Ad soyad</label><input id="sName" placeholder="Ad soyad">
-   <label>E-posta</label><input id="sEmail" type="email" placeholder="ornek@mail.com">
-   <label>Şifre (en az 6 karakter)</label><input id="sPass" type="password">
-   <label>Şifre tekrar</label><input id="sPass2" type="password">
-   <button class="ghost small" style="margin-top:6px" onclick="A.togglePw('sPass','sPass2')">Şifreleri göster / gizle</button>
-   <button class="full" onclick="A.setup()">Süper Admin oluştur</button>
-   <div id="setupMsg" class="msg"></div>
-  </div>
- </div>
-</div>
-
 <!-- ONAY BEKLEYEN -->
 <div id="pending" class="view">
  <div class="narrow">
@@ -347,7 +329,7 @@ details[open] summary:after{content:'−'}
    <h3 style="margin-top:14px">Yönetici başvurunuz alındı</h3>
    <p class="muted" id="pendingText"></p>
    <p class="muted">Başvurunuz onaylandıktan sonra yönetici hesabınız açılır. Ardından ilk girişte site adınızı belirlemeniz istenir.</p>
-   <button class="secondary full" onclick="A.enter()">Durumu yenile</button>
+   <button class="secondary full" onclick="A.recheck()">Durumu yenile</button>
    <button class="ghost full" onclick="A.logout()">Çıkış</button>
   </div>
  </div>
@@ -378,7 +360,7 @@ details[open] summary:after{content:'−'}
    <h3 style="margin-top:14px">Erişim kapalı</h3>
    <p class="muted" id="lockedMsg"></p>
    <p class="muted" id="lockedContact"></p>
-   <button class="secondary full" onclick="A.enter()">Durumu yenile</button>
+   <button class="secondary full" onclick="A.recheck()">Durumu yenile</button>
    <button class="ghost full" onclick="A.logout()">Çıkış</button>
   </div>
  </div>
@@ -479,6 +461,7 @@ details[open] summary:after{content:'−'}
 
   <!-- ===== Süper Admin: Yöneticiler ===== -->
   <section id="p-members" class="page">
+   <div class="pagehead"><h2>Yöneticiler</h2><button class="secondary small" onclick="A.syncNow()">↻ Yenile</button></div>
    <div class="grid" id="memStats"></div>
    <div class="card" id="pendCard" style="margin-top:12px"><h3>Onay bekleyen başvurular</h3><div id="memberList"></div></div>
    <div class="card">
@@ -526,6 +509,115 @@ var st={flatId:'',filter:'all',managerId:''};
 var pendingPaymentAttachment=null,pendingExpenseAttachment=null;
 var MAX_ATTACHMENT_CHARS=1100000,MAX_SITE_ATTACHMENT_CHARS=3500000;
 var db=load(),me=null,fails=0,lockUntil=0;
+
+/* ---------- AYARLAR ---------- */
+// Süper Admin giriş bilgileri (giriş ekranından kullanıcı adı + şifre ile girilir).
+// DİKKAT: Bu bilgiler herkese açık kodda durur; canlıya almadan önce şifreyi değiştirin.
+var ADMIN_USER='admin',ADMIN_PASS='admin123';
+// Ortak veri (birden fazla telefon) için Firebase Realtime Database adresi.
+// Örnek: 'https://proje-adi-default-rtdb.europe-west1.firebasedatabase.app'
+// Boş bırakılırsa veriler yalnızca bu cihazda tutulur.
+var FIREBASE_URL='';
+FIREBASE_URL=String(FIREBASE_URL||'').replace(/\/+$/,'');
+
+/* ---------- sunucu senkronizasyonu ---------- */
+var remoteReady=false,syncing=false,syncTimer=null,lastSynced={};
+function sections(){
+ var o={users:JSON.stringify(db.users),settings:JSON.stringify(db.settings)};
+ Object.keys(db.sites).forEach(function(id){o['site/'+id]=JSON.stringify(db.sites[id]);});
+ return o;
+}
+function dirty(){
+ var cur=sections();
+ return Object.keys(cur).some(function(k){return lastSynced[k]!==cur[k];})||Object.keys(lastSynced).some(function(k){return !(k in cur);});
+}
+function remotePath(k){return FIREBASE_URL+'/aida/'+(k.indexOf('site/')===0?'sites/'+k.slice(5):k)+'.json';}
+function fixArr(x){
+ if(!x)return [];
+ if(Array.isArray(x))return x.filter(function(v){return v!=null;});
+ if(typeof x==='object')return Object.keys(x).sort(function(a,b){return Number(a)-Number(b);}).map(function(k){return x[k];});
+ return [];
+}
+function applyRemote(d){
+ db.users=fixArr(d.users);
+ db.settings=Object.assign(defaults().settings,d.settings||{});
+ db.sites={};
+ Object.keys(d.sites||{}).forEach(function(id){
+  var s=d.sites[id]||{};
+  s.flats=fixArr(s.flats).map(function(f){
+   f.payments=f.payments||{};
+   Object.keys(f.payments).forEach(function(k){f.payments[k].entries=fixArr(f.payments[k].entries);});
+   return f;
+  });
+  s.expenses=fixArr(s.expenses);
+  db.sites[id]=s;
+ });
+}
+function pull(){
+ return fetch(FIREBASE_URL+'/aida.json?_='+Date.now()).then(function(r){
+  if(!r.ok)throw new Error('http '+r.status);
+  return r.json();
+ }).then(function(d){
+  if(d===null||typeof d!=='object'){lastSynced={};remoteReady=true;return;}
+  applyRemote(d);
+  lastSynced=sections();
+  remoteReady=true;
+  try{localStorage.setItem('aida_v2',JSON.stringify(db));}catch(e){}
+ });
+}
+function doSync(){
+ if(!FIREBASE_URL||!remoteReady)return;
+ if(syncing){scheduleSync();return;}
+ var cur=sections(),jobs=[];
+ Object.keys(cur).forEach(function(k){
+  if(lastSynced[k]!==cur[k])jobs.push(fetch(remotePath(k),{method:'PUT',body:cur[k]}).then(function(r){if(!r.ok)throw new Error('http '+r.status);}));
+ });
+ Object.keys(lastSynced).forEach(function(k){
+  if(!(k in cur))jobs.push(fetch(remotePath(k),{method:'DELETE'}).then(function(r){if(!r.ok)throw new Error('http '+r.status);}));
+ });
+ if(!jobs.length)return;
+ syncing=true;
+ Promise.all(jobs).then(function(){
+  lastSynced=cur;syncing=false;
+  if(dirty())scheduleSync();
+ },function(){
+  syncing=false;
+  toast('Sunucuya kaydedilemedi; internet bağlantısını kontrol edin.');
+  setTimeout(scheduleSync,5000);
+ });
+}
+function scheduleSync(){
+ if(!FIREBASE_URL)return;
+ clearTimeout(syncTimer);
+ syncTimer=setTimeout(function(){syncTimer=null;doSync();},500);
+}
+function flushSync(){clearTimeout(syncTimer);syncTimer=null;doSync();}
+function pullSafe(){
+ if(!FIREBASE_URL)return Promise.resolve();
+ if(remoteReady&&(dirty()||syncing||syncTimer)){flushSync();return Promise.resolve();}
+ return pull().catch(function(){toast('Sunucuya bağlanılamadı.');});
+}
+function ensureAdmin(){
+ for(var i=0;i<db.users.length;i++)if(db.users[i].role==='superadmin')return false;
+ db.users.push(makeUser('Süper Admin',ADMIN_USER,ADMIN_PASS,'superadmin'));
+ return true;
+}
+function refreshView(){
+ if(el('app').classList.contains('active')){
+  me=findUser(db.session)||null;
+  if(!me)A.enter();else renderAll();
+ }else if(el('pending').classList.contains('active')||el('locked').classList.contains('active'))A.enter();
+}
+function poll(){
+ if(document.hidden||!FIREBASE_URL||!remoteReady)return;
+ if(el('modal').style.display==='flex')return;
+ var ae=document.activeElement;
+ if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))return;
+ if(dirty()||syncing||syncTimer)return;
+ pull().then(refreshView,function(){});
+}
+setInterval(poll,30000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)poll();});
 
 /* ---------- yardımcılar ---------- */
 function el(id){return document.getElementById(id);}
@@ -609,6 +701,7 @@ function save(){
  var s=JSON.stringify(db);
  try{localStorage.setItem('aida_v2',s);}catch(e){}
  if(window.nativeNotify)window.nativeNotify('save',{data:s});
+ scheduleSync();
 }
 function siteOf(mid){
  var s=db.sites[mid];
@@ -721,7 +814,7 @@ function waNumber(p){
  return '90'+d;
 }
 function show(id){
- ['landing','auth','setup','pending','siteSetup','locked','app'].forEach(function(v){el(v).classList.toggle('active',v===id);});
+ ['loading','landing','auth','pending','siteSetup','locked','app'].forEach(function(v){el(v).classList.toggle('active',v===id);});
  window.scrollTo(0,0);
 }
 A.show=show;
@@ -778,7 +871,7 @@ A.showPrivacy=function(){
   '<h4>1. Veri sorumlusu</h4><p class="muted">'+co+'<br>'+ad+'<br>İletişim: '+ct+'</p>'+
   '<h4>2. İşlenebilecek bilgiler ve amaçlar</h4><p class="muted">Yönetici hesabı oluşturma ve yönetme; site adı, daire numaraları, aidat, tahsilat ve gider kayıtları ile makbuz/rapor işlemlerini yürütme; hizmet güvenliği ve yedekleme amaçlarıyla şu bilgiler işlenebilir: yönetici adı-soyadı, e-posta, hesap ve plan bilgileri, daire numaraları, isteğe bağlı ad-soyad ve telefon, mali kayıtlar ve yöneticinin yüklediği makbuz/fiş fotoğrafları veya PDF dosyaları. Yayımlanan liste, gerçekte kullanılan veri alanlarıyla birebir uyumlu olmalıdır.</p>'+
   '<h4>3. Hukuki sebepler</h4><p class="muted">Her işleme amacı için geçerli hukuki sebep, hizmetin fiili işleyişine ve veri sorumlusunun rolüne göre ayrı ayrı belirlenip doğrulanmalıdır.</p>'+
-  '<h4>4. Saklama, hizmet sağlayıcılar ve aktarım</h4><p class="muted">Bu sürüm verileri yalnızca kullanıcının tarayıcısının yerel depolamasında (localStorage) tutar. Cihaz, tarayıcı ve varsa yedekleme/senkronizasyon ayarları verinin nerede saklandığını etkileyebilir. Saklama süresi, hizmet sağlayıcılar, yurt içi/yurt dışı aktarım ve silme süreçleri gerçek kuruluma göre açıklanmalıdır.</p>'+
+  '<h4>4. Saklama, hizmet sağlayıcılar ve aktarım</h4><p class="muted">Bu sürüm verileri kullanıcının tarayıcısının yerel depolamasında (localStorage) ve ortak kullanım için ayarlanmışsa Firebase Realtime Database sunucusunda tutar. Cihaz, tarayıcı ve varsa yedekleme/senkronizasyon ayarları verinin nerede saklandığını etkileyebilir. Saklama süresi, hizmet sağlayıcılar, yurt içi/yurt dışı aktarım ve silme süreçleri gerçek kuruluma göre açıklanmalıdır.</p>'+
   '<h4>5. İlgili kişi başvuruları</h4><p class="muted">KVKK kapsamındaki başvurular için yukarıdaki iletişim bilgisini kullanabilirsiniz. Başvuru yöntemi ve yanıt süreci veri sorumlusu tarafından yayımdan önce tamamlanmalıdır.</p>'+
   '<div class="grid" style="margin-top:14px"><button class="secondary" onclick="A.closeModal()">Kapat</button><button onclick="A.contact()">İletişim</button></div>');
 };
@@ -797,7 +890,7 @@ function enterInner(){
  renderLanding();
  if(!me){
   if(db.session){db.session=null;save();}
-  show(db.users.length===0?'setup':'landing');
+  show('landing');
   return;
  }
  if(me.role==='beklemede'){
@@ -893,38 +986,38 @@ function checkSignup(name,email,p1,p2,msgId){
  if(findByEmail(email)){setMsg(msgId,'Bu e-posta ile zaten kayıt var.');return false;}
  return true;
 }
-A.setup=function(){
- if(db.users.length>0)return;
- var name=el('sName').value.trim(),email=normEmail(el('sEmail').value);
- var p1=el('sPass').value,p2=el('sPass2').value;
- if(!checkSignup(name,email,p1,p2,'setupMsg'))return;
- var u=makeUser(name,email,p1,'superadmin');
- db.users.push(u);db.session=u.id;save();
- A.enter();toast('Süper Admin hesabı oluşturuldu.');
-};
 A.register=function(){
  var name=el('rName').value.trim(),email=normEmail(el('rEmail').value);
  var p1=el('rPass').value,p2=el('rPass2').value;
- if(!checkSignup(name,email,p1,p2,'authMsg'))return;
- var u=makeUser(name,email,p1,'beklemede');
- db.users.push(u);db.session=u.id;save();
- el('rPass').value='';el('rPass2').value='';
- A.enter();
+ pullSafe().then(function(){
+  if(!checkSignup(name,email,p1,p2,'authMsg'))return;
+  var u=makeUser(name,email,p1,'beklemede');
+  db.users.push(u);db.session=u.id;save();flushSync();
+  el('rPass').value='';el('rPass2').value='';
+  A.enter();
+ });
 };
 A.login=function(){
  if(Date.now()<lockUntil){setMsg('authMsg','Çok fazla hatalı deneme. 30 saniye bekleyin.');return;}
  var email=normEmail(el('lEmail').value),pw=el('lPass').value;
- var u=findByEmail(email);
- if(!u){setMsg('authMsg','Bu e-posta ile kayıtlı hesap bulunamadı. Hesaplar şu an yalnızca kayıt olunan telefonda geçerlidir.');return;}
- if(u.hash===hashPw(pw,u.salt)){
-  fails=0;db.session=u.id;save();
-  el('lPass').value='';setMsg('authMsg','');
-  A.enter();
- }else{
-  fails++;
-  if(fails>=5){lockUntil=Date.now()+30000;fails=0;}
-  setMsg('authMsg','Şifre hatalı. "Şifreyi göster" ile yazdığınızı kontrol edin.');
- }
+ pullSafe().then(function(){
+  var u=findByEmail(email);
+  if(!u){setMsg('authMsg','Bu e-posta veya kullanıcı adı ile kayıtlı hesap bulunamadı.');return;}
+  if(u.hash===hashPw(pw,u.salt)){
+   fails=0;db.session=u.id;save();
+   el('lPass').value='';setMsg('authMsg','');
+   A.enter();
+  }else{
+   fails++;
+   if(fails>=5){lockUntil=Date.now()+30000;fails=0;}
+   setMsg('authMsg','Şifre hatalı. "Şifreyi göster" ile yazdığınızı kontrol edin.');
+  }
+ });
+};
+A.recheck=function(){pullSafe().then(function(){A.enter();});};
+A.syncNow=function(){
+ if(!FIREBASE_URL){toast('Ortak sunucu ayarlanmamış (yalnızca bu cihaz).');return;}
+ pullSafe().then(function(){refreshView();toast('Güncellendi.');});
 };
 A.logout=function(){
  db.session=null;save();me=null;pendingPaymentAttachment=null;pendingExpenseAttachment=null;
@@ -1614,7 +1707,7 @@ A.bkRestore=function(){
 };
 
 /* ---------- şifre kurtarma + başlangıç ---------- */
-(function(){
+function applyReset(){
  var r=window.__RESET__;
  if(!r||!r.password){
   try{var rs=localStorage.getItem('aida_reset');if(rs){r=JSON.parse(rs);localStorage.removeItem('aida_reset');}}catch(e){}
@@ -1627,9 +1720,19 @@ A.bkRestore=function(){
   else if(String(r.password).length<6)resetNote='Sıfırlama: şifre en az 6 karakter olmalı';
   else{u.salt=uid()+uid();u.hash=hashPw(String(r.password),u.salt);db.session=null;save();resetNote='Şifre sıfırlandı. Hesap e-postası: '+u.email;}
  }
-})();
+}
 el('modal').onclick=function(e){if(e.target===el('modal'))closeModal();};
-A.enter();
+if(!FIREBASE_URL){
+ if(ensureAdmin())save();
+ applyReset();A.enter();
+}else{
+ pull().then(function(){
+  if(ensureAdmin())save();
+ },function(){
+  ensureAdmin();save();
+  toast('Sunucuya bağlanılamadı; bu cihazdaki veriyle açıldı.');
+ }).then(function(){applyReset();A.enter();});
+}
 })();
 </script>
 </body>
